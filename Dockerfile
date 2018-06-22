@@ -1,4 +1,4 @@
-FROM stellar/base:latest
+FROM stellar-base-rpi:latest
 
 MAINTAINER Bartek Nowotarski <bartek@stellar.org>
 
@@ -13,6 +13,8 @@ EXPOSE 11626
 ADD dependencies /
 RUN ["chmod", "+x", "dependencies"]
 RUN /dependencies
+
+ADD snakeoil.answers.txt /tmp
 
 ADD install /
 RUN ["chmod", "+x", "install"]

@@ -2,8 +2,8 @@
 set -e
 
 # dependencies
-apt-get update
-apt-get install -y curl git libpq-dev libsqlite3-dev libsasl2-dev postgresql-client postgresql postgresql-contrib sudo vim zlib1g-dev supervisor
-apt-get clean
+dnf update
+dnf -y install curl git postgresql-devel sqlite-devel cyrus-sasl-devel postgresql-server postgresql postgresql-contrib sudo zlib-devel supervisor libstdc++ 
+dnf clean
 
 echo "\nDone installing dependencies...\n"

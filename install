@@ -2,15 +2,24 @@
 set -e
 
 # stellar-core
-wget -O stellar-core.deb https://s3.amazonaws.com/stellar.org/releases/stellar-core/stellar-core-${STELLAR_CORE_VERSION}_amd64.deb
-dpkg -i stellar-core.deb
-rm stellar-core.deb
+wget -O stellar-core https://github.com/hard-codr/docker-stellar-core-horizon-rpi/releases/download/v0.1.0/stellar-core.aarch64
+mv stellar-core /usr/local/bin
+chmod a+x /usr/local/bin/stellar-core
 
 # horizon
-wget -O horizon.tar.gz https://github.com/stellar/go/releases/download/horizon-v${HORIZON_VERSION}/horizon-v${HORIZON_VERSION}-linux-amd64.tar.gz
-tar -zxvf horizon.tar.gz
-mv /horizon-v${HORIZON_VERSION}-linux-amd64/horizon /usr/local/bin
-chmod +x /usr/local/bin/horizon
-rm -rf horizon.tar.gz /horizon-v${HORIZON_VERSION}-linux-amd64
+wget -O horizon https://github.com/hard-codr/docker-stellar-core-horizon-rpi/releases/download/v0.1.0/horizon.aarch64
+mv horizon /usr/local/bin
+chmod a+x /usr/local/bin/horizon
 
 echo "\nDone installing stellar-core and horizon...\n"
+
+# following hack is to make postgress work on Fedora
+mkdir /etc/ssl/private
+cd /etc/ssl/certs
+cat /tmp/snakeoil.answers.txt | make ssl-cert-snakeoil.pem
+#first 28 lines is private-key
+head -28 ssl-cert-snakeoil.pem > /etc/ssl/private/ssl-cert-snakeoil.key
+
+echo "\nDone installing snakeoil certificates...\n"
+
+
