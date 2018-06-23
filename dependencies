@@ -2,8 +2,8 @@
 set -e
 
 # dependencies
-dnf update
-dnf -y install curl git postgresql-devel sqlite-devel cyrus-sasl-devel postgresql-server postgresql postgresql-contrib sudo zlib-devel supervisor libstdc++ 
-dnf clean
+dnf -y update
+dnf -y install curl git postgresql-devel sqlite-devel cyrus-sasl-devel postgresql-server postgresql postgresql-contrib sudo zlib-devel supervisor libstdc++ psmisc
+dnf clean all
 
 echo "\nDone installing dependencies...\n"
