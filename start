@@ -8,6 +8,7 @@ export COREHOME="$STELLAR_HOME/core"
 export HZHOME="$STELLAR_HOME/horizon"
 
 export PGBIN="/bin"
+export PGRUN="/var/run/postgresql"
 export PGDATA="$PGHOME/data"
 export PGUSER="stellar"
 export PGPORT=5432
@@ -25,6 +26,11 @@ function main() {
 	echo "mode: $STELLAR_MODE"
 	echo "network: $NETWORK ($NETWORK_PASSPHRASE)"
 
+	if [ ! -d $PGRUN ]; then
+		mkdir -p $PGRUN
+		chown postgres:postgres $PGRUN
+	fi
+
 	copy_defaults
 	init_db
 	init_stellar_core
@@ -32,6 +38,15 @@ function main() {
 	copy_pgpass
 
 	stop_postgres  # this gets started in init_db
+
+	set +e
+	PG_SSL_PERM=$(namei -l /etc/ssl/private | grep postgres)
+	set -e
+	if [ -z "$PG_SSL_PERM" ]; then
+		echo "Postgres doesn't have permission on ssl certs; changing permissions"
+		mkdir /etc/ssl/certs-copy; mv /etc/ssl/certs/* /etc/ssl/certs-copy/; rm -r /etc/ssl/certs; mv /etc/ssl/certs-copy /etc/ssl/certs; chmod -R 0700 /etc/ssl/certs; chown -R postgres /etc/ssl/certs
+		mkdir /etc/ssl/private-copy; mv /etc/ssl/private/* /etc/ssl/private-copy/; rm -r /etc/ssl/private; mv /etc/ssl/private-copy /etc/ssl/private; chmod -R 0700 /etc/ssl/private; chown -R postgres /etc/ssl/private
+	fi
 
 	# launch services
 	exec_supervisor
