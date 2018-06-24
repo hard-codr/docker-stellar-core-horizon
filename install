@@ -12,14 +12,3 @@ mv horizon /usr/local/bin
 chmod a+x /usr/local/bin/horizon
 
 echo "\nDone installing stellar-core and horizon...\n"
-
-# following hack is to make postgress work on Fedora
-mkdir /etc/ssl/private
-cd /etc/ssl/certs
-cat /tmp/snakeoil.answers.txt | make ssl-cert-snakeoil.pem
-#first 28 lines is private-key
-head -28 ssl-cert-snakeoil.pem > /etc/ssl/private/ssl-cert-snakeoil.key
-
-echo "\nDone installing snakeoil certificates...\n"
-
-
