@@ -104,14 +104,14 @@ $ sudo docker run -d \
     --name stellar \
     hardcodr/stellar-quickstart --pubnet
 ```
-***WARNING: You might not want to expose Adminstrator port 11626. Read (this)[https://github.com/stellar/docker-stellar-core-horizon#security-considerations] before exposing port to outside world***
+***WARNING: You might not want to expose Adminstrator port 11626. Read [this](https://github.com/stellar/docker-stellar-core-horizon#security-considerations) before exposing port to outside world***
 
 You can log into the container where all the processes are running using if you want to get your hand dirty:
 ```
 $ sudo docker exec -it stellar bash
 ```
 
-To access horizon API endpoint, point your browser to `http://192.168.2.42:8000/`, where `192.168.2.4` is your RPi IP address.
+To access horizon API endpoint, point your browser to `http://192.168.2.42:8000/`, where `192.168.2.42` is your RPi IP address.
 
 
 ## Using horizon endpoint
