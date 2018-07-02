@@ -1,196 +1,129 @@
-# Stellar Quickstart Docker Image
+# Stellar Quickstart Docker Image for Raspberry Pi (RPi)
 
-This project provides a simple way to incorporate stellar-core and horizon into your private infrastructure, provided that you use docker.
+## Prerequisite
+* Raspberry Pi Model 3 B/B+ (stellar-core supports only 64-bit operating systems, therefore you have only two options if you want to run stellar-core on RPi and that is RPi 3 Model B and B+.)
+* 32 GB, Class 10 Grade 3 Micro SD card. (Stellar/Horizon does heavy I/O to persist data, running it on slower card causes it to perform very badly. I recommend at least Grade 3 Micro SD card i.e. ~90-100 MB/s write speed).
+* Network cable to connect RPi to the router (apparently wifi driver doesn't work reliably with Fedora)
+* HDMI cable and monitor (needed only during initial setup step)
 
-This image provide a default, non-validating, ephemeral configuration that should work for most developers.  By configuring a container using this image with a host-based volume (described below in the "Usage" section) an operator gains access to full configuration customization and persistence of data.
+## Installing Fedora
+Fedora project has a [guide](https://fedoraproject.org/wiki/Architectures/ARM/Raspberry_Pi) explaining installation steps of Fedora on RPi. I followed that guide word-by-word and able to run it on RPi. I used the aarch64 image of [Fedora Server 28](https://dl.fedoraproject.org/pub/fedora/linux/releases/28/Server/aarch64/images/Fedora-Server-28-1.1.aarch64.raw.xz). (Note: aarch64 is important since as explained above stellar-core runs only on 64-bit OS.)
 
-The image uses the following software:
+On Mac (Windows/Linux need different commands), write the image on sd-card with following command:
+
+```
+xz -d Fedora-IMAGE-NAME.aarch64.raw.xz
+sudo dd bs=4m if=Fedora-IMAGE-NAME.aarch64.raw of=/dev/rdisk2 conv=sync,noerror
+```
+
+Where `Fedora-Server-IMAGE-NAME.aarch64.raw` is extracted file and `/dev/rdiskN` is the disk name which you can see using disk utility or use the diskutil command on Mac:
+
+```
+$ diskutil list
+/dev/disk2 (internal, physical):
+   #:     TYPE NAME                        SIZE       IDENTIFIER
+   0:     FDisk_partition_scheme          *31.9 GB    disk2
+   1:             Windows_FAT_32 NO NAME   31.9 GB    disk2s1
+```
+
+Once the disk image is written, just plug the card into the raspberry pi and via HDMI port connect it to monitor to finish the user creation step (you will need monitor only for this step):
+![Screen-1](https://raw.githubusercontent.com/hard-codr/assets/master/first.jpg)
+![Screen-2](https://raw.githubusercontent.com/hard-codr/assets/master/second.jpg)
+
+```
+Choose appropriate option as shown in screen:
+1. Choose option 5 and then option 1 to create user.
+2. Choose option 4 to enable password
+3. Choose option 6 to make the user 'Administrator'
+4. Choose option 3 to enter the username.
+5. Choose option 5 to enter the password.
+6. Enter 'c' to create user
+```
+
+After this you don't need a monitor, you can just ssh remotely into the RPi. Username and password chosen above can be used to log into raspberry pi via ssh.
+
+After you log in, you will see very less available space on disk (e.g. by running `df -h .`), this is because OS is not aware of all the available space in your SD card and you need to expand the filesystem to reclaim all that space. The instruction given in Fedora distribution page didn’t work for me. I used following instead (depending upon what is your root partition number, mine was 3):
+
+**Run this on RPi**
+```
+$ sudo growpart /dev/mmcblk0 3 # '3' here is root partition number
+$ sudo pvresize /dev/mmcblk0p3 # again mmcblk0p3 is root partition
+$ sudo lvresize /dev/fedora/root /dev/mmcblk0p3
+$ sudo xfs_growfs -d /
+```
+
+After the first installation, do package update by running:
+```
+$ sudo dnf update
+```
+(This may take ages to complete depending upon your network speed)
+
+## Configure docker on Fedora
+
+Download the docker installer script, verify it and then run it to install docker:
+```
+$ curl -fsSL get.docker.com -o get-docker.sh
+$ sudo sh get-docker.sh
+```
+
+## Running stellar validator
+
+The docker image steller-core uses the following software:
 
 - Postgresql 9.5 is used for storing both stellar-core and horizon data
 - [stellar-core](https://github.com/stellar/stellar-core)
 - [horizon](https://github.com/stellar/horizon)
-- Supervisord is used from managing the processes of the services above.
+- Supervisord is used for managing the processes of the services above.
 
-## Usage
+***WARNING: SDF doesn't provide official binaries of stellar-core and horizon for the arm64 platform. The binaries used in this docker image are built using above provided repositories on the arm64 and distributed [here](https://github.com/hard-codr/docker-stellar-core-horizon-rpi/releases). If you don't trust, then you can build those yourself. [Here](https://github.com/hard-codr/stellar-core) are instructions to build the stellar-core and horizon on RPi.***
 
-To use this project successfully, you should first decide a few things:
-
-First, decide whether you want your container to be part of the public, production Stellar network (referred to as the _pubnet_) or the test network (called testnet) that we recommend you use while developing software because you need not worry about losing money on the testnet. Additionally, we have added a standalone network (called standalone) which allows you to run your own private Stellar network. You'll provide either `--pubnet`, `--testnet` or `--standalone` as a command line flag when starting the container to determine which network (and base configuration file) to use.
-
-Next, you must decide whether you will use a docker volume or not.  When not using a volume, we say that the container is in _ephemeral mode_, that is, nothing will be persisted between runs of the container. _Persistent mode_ is the alternative, which should be used in the case that you need to either customize your configuration (such as to add a validation seed) or would like avoid a slow catchup to the Stellar network in the case of a crash or server restart.  We recommend persistent mode for anything besides a development or test environment.
-
-Finally, you must decide what ports to expose.  The software in these images listen on 4 ports, each of which you may or may not want to expose to the network your host system is connected to.  A container that exposes no ports isn't very useful, so we recommend at a minimum you expose the horizon http port.  See the "Ports" section below for a more nuanced discussion regarding the decision about what ports to expose.
-
-After deciding on the questions above, you can setup your container.  Please refer to the appropriate section below based upon what mode you will run the container in.
-
-### Background vs. Interactive containers
-
-Docker containers can be run interactively (using the `-it` flags) or in a detached, background state (using the `-d` flag).  Many of the example commands below use the `-it` flags to aid in debugging but in many cases you will simply want to run a node in the background.  It's recommended that you use the use [the tutorials at docker](https://docs.docker.com/engine/tutorials/usingdocker/) to familiarize yourself with using docker.
-
-### Ephemeral mode
-
-Ephermeral mode is provided to support development and testing environments.  Every time you start a container in ephemeral mode, the database starts empty and a default configuration file will be used for the appropriate network.
-
-Starting an ephemeral node is simple, just craft a `docker run` command to launch the appropriate image but *do not mount a volume*.  To craft your docker command, you need the network name you intend to run against and the flags to expose the ports your want available (See the section named "Ports" below to learn about exposing ports).  Thus, launching a testnet node while exposing horizon would be:
-
-```shell
-$ docker run --rm -it -p "8000:8000" --name stellar stellar/quickstart --testnet
-```  
-
-As part of launching, an ephemeral mode container will generate a random password for securing the postgresql service and will output it to standard out.  You may use this password (provided you have exposed the postgresql port) to access the running postgresql database (See the section "Accessing Databases" below).
-
-
-### Persistent mode
-
-In comparison to ephemeral mode, persistent mode is more complicated to operate, but also more powerful.  Persistent mode uses a mounted host volume, a directory on the host machine that is exposed to the running docker container, to store all database data as well as the configuration files used for running services.  This allows you to manage and modify these files from the host system.
-
-Starting a persistent mode container is the same as the ephemeral mode with one exception:
-
-```shell
-docker run --rm -it -p "8000:8000" -v "/home/scott/stellar:/opt/stellar" --name stellar stellar/quickstart --testnet
+Run interactive persistent validator on testnet
+```
+mkdir /home/pi/stellar/testnet
+sudo docker run --rm -it -p "8000:8000" -p "11626:11626"  -p "11625:11625" -v "/home/pi/stellar/testnet/:/opt/stellar:Z" --name stellar hardcodr/stellar-quickstart --testnet
 ```
 
-The `-v` option in the example above tells docker to mount the host directory `/home/scott/stellar` into the container at the `/opt/stellar` path.  You may customize the host directory to any location you like, simply make sure to use the same value every time you launch the container.  Also note: an absolute directory path is required.  The second portion of the volume mount (`/opt/stellar`) should never be changed.  This special directory is checked by the container to see if it is mounted from the host system which is used to see if we should launch in ephemeral or persistent mode.
-
-Upon launching a persistent mode container for the first time, the launch script will notice that the mounted volume is empty.  This will trigger an interactive initialization process to populate the initial configuration for the container.  This interactive initialization adds some complications to the setup process because in most cases you won't want to run the container interactively during normal operation, but rather in the background.  We recommend the following steps to setup a persistent mode node:
-
-1.  Run an interactive session of the container at first, ensuring that all services start and run correctly.
-2.  Shut down the interactive container (using Ctrl-C).
-3.  Start a new container using the same host directory in the background.
-
-
-### Customizing configurations
-
-To customize the configurations that both stellar-core and horizon use, you must use persistent mode.  The default configurations will be copied into the data directory upon launching a persistent mode container for the first time.  Use the diagram below to learn about the various configuration files that can be customized.
-
+Run interactive persistent validator on pubnet
 ```
-  /opt/stellar
-  |-- core                  
-  |   `-- etc
-  |       `-- stellar-core.cfg  # Stellar core config
-  |-- horizon
-  |   `-- etc
-  |       `-- horizon.env       # A shell script that exports horizon's config
-  |-- postgresql
-  |   `-- etc
-  |       |-- postgresql.conf   # Postgresql root configuration file
-  |       |-- pg_hba.conf       # Postgresql client configuration file
-  |       `-- pg_ident.conf     # Postgresql user mapping file
-  `-- supervisor
-      `-- etc
-  |       `-- supervisord.conf  # Supervisord root configuration
+mkdir /home/pi/stellar/pubnet
+sudo docker run --rm -it -p "8000:8000" -p "11626:11626"  -p "11625:11625" -v "/home/pi/stellar/pubnet/:/opt/stellar:Z" --name stellar hardcodr/stellar-quickstart --pubnet
 ```
 
-It is recommended that you stop the container before editing any of these files, then restart the container after completing your customization.
+This will ask you to provide a password for newly created Postgres instance, which stellar internally uses. This is just to do the initial setup of stellar-core and horizon. Following are steps to set up a persistent mode node that will run in the background:
 
-*NOTE:* Be wary of editing these files.  It is possible to break the services started within this container with an bad edit.  It's recommended that you learn about managing the operations of each of the services before customizing them, as you are taking responsibility for maintaining those services going forward.
-
-
-## Regarding user accounts
-
-Managing UIDs between a docker container and a host volume can be complicated.  At present, this image simply tries to create a UID that does not conflict with the host system by using a preset UID:  10011001.  Currently there is no way to customize this value.  All data produced in the host volume be owned by 10011001.  If this UID value is inappropriate for your infrastructure we recommend you fork this project and do a find/replace operation to change UIDs.  We may improve this story in the future if enough users request it.
-
-## Ports
-
-| Port  | Service      | Description          |
-|-------|--------------|----------------------|
-| 5432  | postgresql   | database access port |
-| 8000  | horizon      | main http port       |
-| 11625 | stellar-core | peer node port       |
-| 11626 | stellar-core | main http port       |
-
-
-### Security Considerations
-
-Exposing the network ports used by your running container comes with potential risks.  While many attacks are preventable due to the nature of the stellar network, it is extremely important that you maintain protected access to the postgresql server that runs within a quickstart container.  An attacker who gains write access to this DB will be able to corrupt your view of the stellar network, potentially inserting fake transactions, accounts, etc.
-
-It is safe to open the horizon http port.  Horizon is designed to listen on an internet-facing interface and has provides no privileged operations on the port.
-
-The HTTP port for stellar-core should only be exposed to a trusted network, as it provides no security itself.  An attacker that can make requests to the port will be able to perform administrative commands such as forcing a catchup or changing the logging level and more, many of which could be used to distrupt operations or deny service.
-
-The peer port for stellar-core however can be exposed, and ideally would be routable from the internet.  This would allow external peers to initiate connections to your node, improving connectivity of the overlay network.  However, this is not required as your container will also establish outgoing connections to peers.
-
-## Accessing and debugging a running container
-
-There will come a time when you want to inspect the running container, either to debug one of the services, to review logs, or perhaps some other administrative tasks.  We do this by starting a new interactive shell inside the running container:
+1. Run an interactive session of the container at first, ensuring that all services start and run correctly (as explained above).
+2. Shut down the interactive container (using Ctrl-C).
+3. Start a new container using the same host directory in the background as follows.
 
 ```
-$ docker exec -it stellar /bin/bash
-```
-
-The command above assumes that you launched your container with the name `stellar`; Replace that name with whatever you chose if different.  When run, it will open an interactive shell running as root within the container.
-
-### Restarting services
-
-Services within the quickstart container are managed using [supervisord](http://supervisord.org/index.html) and we recommend you use supervisor's shell to interact with running services.  To launch the supervisor shell, open an interactive shell to the container and then run `supervisorctl`.  You should then see a command prompt that looks like:
-
-```shell
-horizon                          RUNNING    pid 143, uptime 0:01:12
-postgresql                       RUNNING    pid 126, uptime 0:01:13
-stellar-core                     RUNNING    pid 125, uptime 0:01:13
-supervisor>
-```
-
-From this prompt you can execute any of the supervisord commands:  
-
-```shell
-# restart horizon
-supervisor> restart horizon  
-
-
-# stop stellar-core
-supervisor> stop stellar-core  
-```
-
-You can learn more about what commands are available by using the `help` command.
-
-### Viewing logs
-
-Logs can be found within the container at the path `/var/log/supervisor/`.  A file is kept for both the stdout and stderr of the processes managed by supervisord.  Additionally, you can use the `tail` command provided by supervisorctl.
-
-### Accessing databases
-
-The point of this project is to make running stellar's software within your own infrastructure easier, so that your software can more easily integrate with the stellar network.  In many cases, you can integrate with horizon's REST API, but often times you'll want direct access to the database either horizon or stellar-core provide.  This allows you to craft your own custom sql queries against the stellar network data.
-
-This image manages two postgres databases:  `core` for stellar-core's data and `horizon` for horizon's data.  The username to use when connecting with your postgresql client or library is `stellar`. The password to use is dependent upon the mode your container is running in:  Persistent mode uses a password supplied by you and ephemeral mode generates a password and prints it to the console upon container startup.
-
-
-## Example launch commands
-
-Below is a list of various ways you might want to launch the quickstart container annotated to illustrate what options are enabled.  It's also recommended that you should learn and get familiar with the docker command.
-
-*Launch an ephemeral pubnet node in the background:*
-```
-$ docker run -d -p "8000:8000" --name stellar stellar/quickstart --pubnet
-```
-
-*Launch an ephemeral testnet node in the foreground, exposing all ports:*
-```
-$ docker run --rm -it \
+$ sudo docker run -d \
+    -v "/home/pi/stellar/pubnet/:/opt/stellar:Z" \
     -p "8000:8000" \
-    -p "11626:11626" \
     -p "11625:11625" \
+    -p "11626:11626" \
     --name stellar \
-    stellar/quickstart --testnet
+    hardcodr/stellar-quickstart --pubnet
+```
+***WARNING: You might not want to expose Adminstrator port 11626. Read (this)[https://github.com/stellar/docker-stellar-core-horizon#security-considerations] before exposing port to outside world***
+
+You can log into the container where all the processes are running using if you want to get your hand dirty:
+```
+$ sudo docker exec -it stellar bash
 ```
 
-*Setup a new persistent node using the host directory `/str`:*
-```
-$ docker run -it --rm \
-    -v "/str:/opt/stellar" \
-    --name stellar \
-    stellar/quickstart --pubnet
-```
+To access horizon API endpoint, point your browser to `http://192.168.2.42:8000/`, where `192.168.2.4` is your RPi IP address.
 
-*Start a background persistent container for an already initialized host directory:*
-```
-$ docker run -d \
-    -v "/str:/opt/stellar" \
-    -p "8000:8000" \
-    --name stellar \
-    stellar/quickstart --pubnet
-```
 
-## Troubleshooting
+## Using horizon endpoint
 
-Let us know what you're having trouble with!  Open an issue or join us on our public slack channel.
+You can use the horizon endpoint with your own choice of the library like you use normal SDF horizon endpoint. E.g. you can use the above endpoint with [Sirius](https://github.com/hard-codr/sirius) python library as follow:
+
+```
+import stellar
+
+stellar.setup_custom_network('http://192.168.2.42:8000', 'Public Global Stellar Network ; September 2015')
+
+t = stellar.transactions().fetch()
+for i in t.records():
+	print i
+```
